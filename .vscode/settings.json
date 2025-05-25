@@ -1,0 +1,7 @@
+{
+    "files.associations": {
+        "list.h": "c",
+        "extra.h": "c",
+        "cmath": "c"
+    }
+}
