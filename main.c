@@ -1,6 +1,7 @@
 #include "tdas/extra.h"
 #include "tdas/list.h"
 #include "tdas/map.h"
+#include "tdas/stack.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -172,6 +173,7 @@ escenario *menuPrincipal() {
     direccion[strcspn(direccion, "\n")] = '\0';
     escenario **arrayTemp = cargarArchivo(direccion);
     escenario *grafo = crearGrafo(arrayTemp);
+    free(arrayTemp);
     puts("Iniciando nueva partida de GraphQuest...");
     return grafo;
 }
@@ -297,17 +299,20 @@ void anadirItems(jugador *j, List *items) {
 // Agrega items, peso y valor, descuenta 1 de tiempo
 void opcion1(escenario *s, jugador *j, List *input) { 
     List *listaItems = recogerItem(s, input, j);
+    if (list_first(listaItems) == NULL) return; // Si no se recogio ningun objeto
     anadirItems(j, listaItems);
     j -> tiempo -= 1;
 }
 
 // Funcion para remover items del inventario de un jugador usando una lista de strings
-void quitarItems(jugador *j, List *input) {
+int quitarItems(jugador *j, List *input) {
+    int flag = 0;
     for (char *str = list_first(input) ; str != NULL ; str = list_next(input)) {// Recorre la lista de inputs
         item *i = list_first(j -> inventario);
         while (i != NULL) { // Recorre el inventario para ver cuales son validos
             item *siguiente = list_next(j -> inventario); 
             if ((compararStrings(str, i -> nombre) == 0) && !sinItem(j, i)) { // Si el nombre del item es igual al proporcionado y el usuario posee el item
+                flag = 1; // Se elimino al menos un objeto
                 j -> peso -= i -> peso;
                 j -> puntaje -= i -> valor;
                 list_popCurrent(j -> inventario);
@@ -316,12 +321,13 @@ void quitarItems(jugador *j, List *input) {
             i = siguiente;
         }
     }
+    return flag;
 }
 
 // Remueve uno o varios items
 void opcion2(jugador *j, List *input) {
-    quitarItems(j, input);
-    j -> tiempo -= 1;
+    if(quitarItems(j, input)) // Si se quito al menos un item
+        j -> tiempo -= 1;
 }
 
 // Muestra si la direccion escogida es valida para el escenario actual
@@ -411,9 +417,7 @@ int opcionesJuego(escenario **s, jugador *j) {
         case 4: // Reiniciar Partida
             return 1;
         case 5: // Salir del Juego
-            //limpiarPrograma();
-            puts("Saliendo de GraphQuest...");
-            exit(EXIT_SUCCESS);
+            return 2;
         }
     }
 }
@@ -423,15 +427,87 @@ int comprobarTermino(jugador *j,escenario *s) { // retorna 0 si continua la part
     if (s -> esFinal) {
         return 2;
     }
-    if (j -> tiempo < 0) {
+    if (j -> tiempo <= 0) {
         return 1;
     }
     return 0;
 }
 
-void reiniciarPartida(jugador *j) {
+void limpiarJugador(jugador *j) {
     list_clean(j -> inventario);
     free(j -> inventario);
+    free(j);
+}
+
+// Todos los nodos que apunten a este, pasaran a apuntar a NULL
+void borrarConexiones(escenario *s) {
+    if (s -> adyacentes[0] != NULL) { // Nodo de Arriba
+        s -> adyacentes[0] -> adyacentes[1] = NULL;
+    }
+    if (s -> adyacentes[1] != NULL) { // Nodo de Abajo
+        s -> adyacentes[1] -> adyacentes[0] = NULL;
+    }
+    if (s -> adyacentes[2] != NULL) { // Nodo de la Izquierda
+        s -> adyacentes[2] -> adyacentes[3] = NULL;
+    }
+    if (s -> adyacentes[3] != NULL) { // Nodo de la Derecha
+        s -> adyacentes[3] -> adyacentes[2] = NULL;
+    }
+}
+
+// Borra la data de tipo item de una List
+void borrarListaItems(List *l) {
+    item *i = NULL;
+    while ((i = list_popBack(l))) {
+        free (i -> nombre);
+        free(i);
+    }
+}
+
+// Limpia el nombre, descripcion y lista de objetos de un escenario
+void limpiarEscenario(escenario *s) { 
+    // Romper conexiones
+    borrarConexiones(s);
+
+    // Liberar data
+    free(s -> nombre);
+    free(s -> desc);
+    borrarListaItems(s -> loot);
+    free(s -> loot);
+
+    // Liberar el nodo
+    free(s);
+}
+
+// Revisa si un escenario esta en la lista
+int enLista(List *l, escenario *s) {
+    for (escenario *i = list_first(l) ; i != NULL ; i = list_next(l)) {
+        if ((i -> id) == (s -> id)) return 1;
+    }
+    return 0;
+}
+
+// Limpia el grafo a partir de un objeto en este
+void limpiarGrafo(escenario *s) {
+    List *vistos = list_create(); // Crear una lista que almacenara los nodos, actuara de manera FIFO
+    list_pushBack(vistos, s); // Se guarda el escenario actual en la lista
+
+    while (list_first(vistos) != NULL) { // Hasta que el stack este vacio (se limpien todos los nodos)
+        escenario *aux = list_popBack(vistos); // variable auxiliar para guardar el nodo que se saca de la lista
+        for (int i = 0 ; i < 4 ; i++) { // Agrega a la lista todos los adyacentes que no sean NULL ni esten en la lista
+            escenario *ady = aux -> adyacentes[i];
+            if (ady != NULL && !enLista(vistos, ady)) // Si el nodo no se borro previamente y su adyacente no es NULL, se agrega al stack
+                list_pushBack(vistos, ady);
+        }
+        limpiarEscenario(aux); // Limpia el escenario extraido de la lista
+    }
+    //La lista deberia llegar aqui vacia
+    free(vistos);
+}
+
+void limpiarPrograma(escenario *s, jugador *j) {
+    limpiarJugador(j);
+    limpiarGrafo(s);
 }
 
 int main() {
@@ -450,35 +526,52 @@ int main() {
             int opcion = opcionesJuego(&actual, j); // Muestra las diferentes opciones
                 // 0: Avanzar normalmente
                 // 1: Reiniciar Partida
-            if (opcion) { // Para reiniciar partida
-                reiniciarPartida(j);
+                // 2: Salir del juego
+            if (opcion == 1) { // Para reiniciar partida
+                limpiarJugador(j);
                 goto reinicio;
+            }
+            else if (opcion == 2) { // Par salir del juego
+                break;
             }
 
             int termino = comprobarTermino(j,actual);
-            if (termino == 0) continue; // Continuar normalmente con las instrucciones
+            printf("%d\n", termino);
+            if (termino == 0)
+                continue; // Continuar normalmente con las instrucciones
 
-            // Se entrara aqui solo si termina la partida
-            if (termino == 1) {
+            // Se entrara aqui solo si termina la partida (termino == 1 || termino == 2)
+            if (termino == 1) { // Se acabo el tiempo
                 puts("========================================");
                 puts("DERROTA (El tiempo llego a 0)");
-                puts("Inserte \"1\" para reiniciar la partida o \"2\" para cerrar el juego");
+                puts("========================================");
+            }
+            else { // termino == 2 (Se encontro la salida)
+                puts("========================================");
+                puts("Has llegado a la salida!");
+                puts("Items recogidos: ");
+                if (!imprimirItems(j -> inventario)) {
+                    puts("No recogiste ningun item");
+                }
+                printf("Puntaje: %d \n", j -> puntaje);
+                puts("========================================");
+            }
+            
+            puts("Inserte \"1\" para reiniciar la partida o \"2\" para cerrar el juego");
                 int num;
                 verificarOpcion(&num, 2); //Verifica que la opcion ingresada sea valida
-                if (num == 2)
-                    break;
-                else {
-                    reiniciarPartida(j);
+                if (num == 1) { // Reiniciar Partida
+                    limpiarJugador(j); 
                     goto reinicio;
                 }
-            }
-            puts("Has llegado a la salida");
-            puts("Items recogidos: ");
-            imprimirItems(j -> inventario);
-            printf("Puntaje: %d", j -> puntaje);
+                else // Salir del juego
+                    break;
         }
-
-        return 0;
+        // Se llegara aca cuando se termine el juego
+        puts("Saliendo de GraphQuest...");
+        limpiarPrograma(actual, j);
+        exit(EXIT_SUCCESS);
+        return 0; // Salir del programa
     }
 }
 
