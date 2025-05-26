@@ -135,7 +135,6 @@ void mostrarMenuJuego() {
     puts("3) Avanzar en una Direccion");
     puts("4) Reiniciar Partida");
     puts("5) Salir del Juego");
-    puts("Seleccione una opcion: ");
 }
 
 // Para esperar a que el usuario realice una accion antes de seguir con el programa
@@ -356,6 +355,8 @@ void avanzar(escenario **s, jugador *j, int dir) {
 // Procesa todas las opciones del juego
 int opcionesJuego(escenario **s, jugador *j) {
     while(1) {
+        mostrarMenuJuego();
+        puts("Seleccione una opcion: ");
         int num;
         verificarOpcion(&num, 6); //Verifica que la opcion ingresada sea valida
         char temp[500]; // Capacidad para leer cadenas de hasta 499 caracteres
@@ -522,7 +523,6 @@ int main() {
         while(1) { // Menu juego
             descEscenario(actual, j); // Muestra la informacion del escenario actual
             
-            mostrarMenuJuego();
             int opcion = opcionesJuego(&actual, j); // Muestra las diferentes opciones
                 // 0: Avanzar normalmente
                 // 1: Reiniciar Partida
